@@ -13,6 +13,7 @@ import ProjectScriptsControl, { type NewProjectScriptInput } from "../ProjectScr
 import { Toggle } from "../ui/toggle";
 import { SidebarTrigger } from "../ui/sidebar";
 import { OpenInPicker } from "./OpenInPicker";
+import { SearchControl } from "../SearchControl";
 
 interface ChatHeaderProps {
   activeThreadId: ThreadId;
@@ -30,12 +31,15 @@ interface ChatHeaderProps {
   diffToggleShortcutLabel: string | null;
   gitCwd: string | null;
   diffOpen: boolean;
+  threadSearchQuery: string;
+  threadSearchMatchCount: number;
   onRunProjectScript: (script: ProjectScript) => void;
   onAddProjectScript: (input: NewProjectScriptInput) => Promise<void>;
   onUpdateProjectScript: (scriptId: string, input: NewProjectScriptInput) => Promise<void>;
   onDeleteProjectScript: (scriptId: string) => Promise<void>;
   onToggleTerminal: () => void;
   onToggleDiff: () => void;
+  onThreadSearchQueryChange: (query: string) => void;
 }
 
 export const ChatHeader = memo(function ChatHeader({
@@ -54,12 +58,15 @@ export const ChatHeader = memo(function ChatHeader({
   diffToggleShortcutLabel,
   gitCwd,
   diffOpen,
+  threadSearchQuery,
+  threadSearchMatchCount,
   onRunProjectScript,
   onAddProjectScript,
   onUpdateProjectScript,
   onDeleteProjectScript,
   onToggleTerminal,
   onToggleDiff,
+  onThreadSearchQueryChange,
 }: ChatHeaderProps) {
   return (
     <div className="@container/header-actions flex min-w-0 flex-1 items-center gap-2">
@@ -83,6 +90,15 @@ export const ChatHeader = memo(function ChatHeader({
         )}
       </div>
       <div className="flex shrink-0 items-center justify-end gap-2 @3xl/header-actions:gap-3">
+        <SearchControl
+          value={threadSearchQuery}
+          placeholder="Search thread..."
+          ariaLabel="Search current thread"
+          clearAriaLabel="Clear thread search"
+          matchCount={threadSearchMatchCount}
+          className="w-36 shrink-0 sm:w-44 @3xl/header-actions:w-56"
+          onValueChange={onThreadSearchQueryChange}
+        />
         {activeProjectScripts && (
           <ProjectScriptsControl
             scripts={activeProjectScripts}

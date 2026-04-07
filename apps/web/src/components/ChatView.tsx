@@ -154,6 +154,8 @@ import { ComposerPromptEditor, type ComposerPromptEditorHandle } from "./Compose
 import { PullRequestThreadDialog } from "./PullRequestThreadDialog";
 import { MessagesTimeline } from "./chat/MessagesTimeline";
 import { ChatHeader } from "./chat/ChatHeader";
+import { normalizeSidebarThreadSearchQuery } from "./Sidebar.logic";
+import { textIncludesAllSearchTokens } from "../lib/searchText";
 import { ContextWindowMeter } from "./chat/ContextWindowMeter";
 import { buildExpandedImagePreview, ExpandedImagePreview } from "./chat/ExpandedImagePreview";
 import { AVAILABLE_PROVIDER_OPTIONS, ProviderModelPicker } from "./chat/ProviderModelPicker";
@@ -592,6 +594,7 @@ export default function ChatView({ threadId }: ChatViewProps) {
     strict: false,
     select: (params) => parseDiffRouteSearch(params),
   });
+  const [threadSearchQuery, setThreadSearchQuery] = useState("");
   const { resolvedTheme } = useTheme();
   const composerDraft = useComposerThreadDraft(threadId);
   const prompt = composerDraft.prompt;
@@ -1318,6 +1321,22 @@ export default function ChatView({ threadId }: ChatViewProps) {
     }
     return [...serverMessagesWithPreviewHandoff, ...pendingMessages];
   }, [serverMessages, attachmentPreviewHandoffByMessageId, optimisticUserMessages]);
+  const threadSearchTokens = useMemo(
+    () => normalizeSidebarThreadSearchQuery(threadSearchQuery),
+    [threadSearchQuery],
+  );
+  const threadSearchMatchingMessageIds = useMemo(() => {
+    const matchingIds = new Set<MessageId>();
+    for (const message of timelineMessages) {
+      if (
+        threadSearchTokens.length > 0 &&
+        textIncludesAllSearchTokens(message.text, threadSearchTokens)
+      ) {
+        matchingIds.add(message.id);
+      }
+    }
+    return matchingIds;
+  }, [threadSearchTokens, timelineMessages]);
   const timelineEntries = useMemo(
     () =>
       deriveTimelineEntries(timelineMessages, activeThread?.proposedPlans ?? [], workLogEntries),
@@ -3951,6 +3970,8 @@ export default function ChatView({ threadId }: ChatViewProps) {
           diffToggleShortcutLabel={diffPanelShortcutLabel}
           gitCwd={gitCwd}
           diffOpen={diffOpen}
+          threadSearchQuery={threadSearchQuery}
+          threadSearchMatchCount={threadSearchMatchingMessageIds.size}
           onRunProjectScript={(script) => {
             void runProjectScript(script);
           }}
@@ -3959,6 +3980,7 @@ export default function ChatView({ threadId }: ChatViewProps) {
           onDeleteProjectScript={deleteProjectScript}
           onToggleTerminal={toggleTerminalVisibility}
           onToggleDiff={onToggleDiff}
+          onThreadSearchQueryChange={setThreadSearchQuery}
         />
       </header>
 
@@ -4012,6 +4034,8 @@ export default function ChatView({ threadId }: ChatViewProps) {
                 resolvedTheme={resolvedTheme}
                 timestampFormat={timestampFormat}
                 workspaceRoot={activeWorkspaceRoot}
+                threadSearchTokens={threadSearchTokens}
+                threadSearchMatchingMessageIds={threadSearchMatchingMessageIds}
               />
             </div>
 

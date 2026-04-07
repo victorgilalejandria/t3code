@@ -2,6 +2,8 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import {
   createThreadJumpHintVisibilityController,
+  getSidebarThreadSearchMatches,
+  getSidebarThreadSearchMatchIds,
   getVisibleSidebarThreadIds,
   resolveAdjacentThreadId,
   getFallbackThreadIdAfterDelete,
@@ -9,6 +11,7 @@ import {
   getProjectSortTimestamp,
   hasUnseenCompletion,
   isContextMenuPointerDown,
+  normalizeSidebarThreadSearchQuery,
   orderItemsByPreferredIds,
   resolveProjectStatusIndicator,
   resolveSidebarNewThreadSeedContext,
@@ -359,6 +362,130 @@ describe("getVisibleSidebarThreadIds", () => {
         },
       ]),
     ).toEqual([ThreadId.makeUnsafe("thread-12"), ThreadId.makeUnsafe("thread-11")]);
+  });
+});
+
+describe("sidebar thread search", () => {
+  it("normalizes whitespace and case into query tokens", () => {
+    expect(normalizeSidebarThreadSearchQuery("  Fix   API Bug  ")).toEqual(["fix", "api", "bug"]);
+  });
+
+  it("matches thread titles, metadata, and message text", () => {
+    const threads = [
+      makeThread({
+        id: ThreadId.makeUnsafe("thread-1"),
+        title: "Refactor sidebar",
+        messages: [
+          {
+            id: "message-1" as never,
+            role: "user",
+            text: "Please add fast thread search",
+            createdAt: "2026-03-09T10:01:00.000Z",
+            streaming: false,
+            completedAt: "2026-03-09T10:01:00.000Z",
+          },
+        ],
+      }),
+      makeThread({
+        id: ThreadId.makeUnsafe("thread-2"),
+        title: "Fix terminal reconnect",
+        branch: "bug/reconnect",
+        messages: [
+          {
+            id: "message-2" as never,
+            role: "assistant",
+            text: "Updated websocket retry handling.",
+            createdAt: "2026-03-09T10:02:00.000Z",
+            streaming: false,
+            completedAt: "2026-03-09T10:02:00.000Z",
+          },
+        ],
+      }),
+    ];
+
+    expect([
+      ...getSidebarThreadSearchMatchIds(threads, normalizeSidebarThreadSearchQuery("thread fast")),
+    ]).toEqual([ThreadId.makeUnsafe("thread-1")]);
+    expect([
+      ...getSidebarThreadSearchMatchIds(threads, normalizeSidebarThreadSearchQuery("bug")),
+    ]).toEqual([ThreadId.makeUnsafe("thread-2")]);
+  });
+
+  it("requires every query word to be present in the same thread", () => {
+    const threads = [
+      makeThread({
+        id: ThreadId.makeUnsafe("thread-library-only"),
+        title: "Library updates",
+        messages: [],
+      }),
+      makeThread({
+        id: ThreadId.makeUnsafe("thread-handoff-only"),
+        title: "Handoff notes",
+        messages: [],
+      }),
+      makeThread({
+        id: ThreadId.makeUnsafe("thread-library-handoff"),
+        title: "Library migration",
+        messages: [
+          {
+            id: "message-1" as never,
+            role: "user",
+            text: "Prepare the handoff checklist.",
+            createdAt: "2026-03-09T10:01:00.000Z",
+            streaming: false,
+            completedAt: "2026-03-09T10:01:00.000Z",
+          },
+        ],
+      }),
+      makeThread({
+        id: ThreadId.makeUnsafe("thread-bundle-lint"),
+        title: "Bundle lint follow-up",
+        messages: [],
+      }),
+      makeThread({
+        id: ThreadId.makeUnsafe("thread-bun-lint"),
+        title: "Run bun lint",
+        messages: [],
+      }),
+    ];
+
+    expect([
+      ...getSidebarThreadSearchMatchIds(threads, normalizeSidebarThreadSearchQuery("bun lint")),
+    ]).toEqual([ThreadId.makeUnsafe("thread-bun-lint")]);
+    expect([
+      ...getSidebarThreadSearchMatchIds(
+        threads,
+        normalizeSidebarThreadSearchQuery("Library handoff"),
+      ),
+    ]).toEqual([ThreadId.makeUnsafe("thread-library-handoff")]);
+  });
+
+  it("returns a display match for the field that explains the result", () => {
+    const thread = makeThread({
+      id: ThreadId.makeUnsafe("thread-1"),
+      title: "Investigate provider reconnect",
+      messages: [
+        {
+          id: "message-1" as never,
+          role: "user",
+          text: "The sidebar search should show where the matching text appears in long thread messages.",
+          createdAt: "2026-03-09T10:01:00.000Z",
+          streaming: false,
+          completedAt: "2026-03-09T10:01:00.000Z",
+        },
+      ],
+    });
+
+    expect(
+      getSidebarThreadSearchMatches(
+        [thread],
+        normalizeSidebarThreadSearchQuery("matching text"),
+      ).get(thread.id),
+    ).toEqual({
+      source: "message",
+      text: "The sidebar search should show where the matching text appears in long thread messages.",
+      role: "user",
+    });
   });
 });
 

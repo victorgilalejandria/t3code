@@ -2,6 +2,12 @@ import * as React from "react";
 import type { SidebarProjectSortOrder, SidebarThreadSortOrder } from "@t3tools/contracts/settings";
 import type { SidebarThreadSummary, Thread } from "../types";
 import { cn } from "../lib/utils";
+import {
+  getEarliestSearchTokenIndex,
+  normalizeSearchQuery,
+  textIncludesAllSearchTokens,
+  textIncludesAnySearchToken,
+} from "../lib/searchText";
 import { isLatestTurnSettled } from "../session-logic";
 
 export const THREAD_SELECTION_SAFE_SELECTOR = "[data-thread-item], [data-thread-selection-safe]";
@@ -17,8 +23,16 @@ type SidebarThreadSortInput = Pick<Thread, "createdAt" | "updatedAt"> & {
   latestUserMessageAt?: string | null;
   messages?: Pick<Thread["messages"][number], "createdAt" | "role">[];
 };
+type SidebarThreadSearchInput = Pick<Thread, "id" | "title" | "branch" | "worktreePath"> & {
+  messages?: Pick<Thread["messages"][number], "role" | "text">[];
+};
 
 export type ThreadTraversalDirection = "previous" | "next";
+export interface SidebarThreadSearchMatch {
+  source: "title" | "branch" | "worktreePath" | "message";
+  text: string;
+  role?: Thread["messages"][number]["role"] | undefined;
+}
 
 export interface ThreadStatusPill {
   label:
@@ -239,6 +253,106 @@ export function getVisibleSidebarThreadIds<TThreadId>(
   return renderedProjects.flatMap((renderedProject) =>
     renderedProject.shouldShowThreadPanel === false ? [] : renderedProject.renderedThreadIds,
   );
+}
+
+export function normalizeSidebarThreadSearchQuery(query: string): string[] {
+  return normalizeSearchQuery(query);
+}
+
+function toSidebarThreadSearchSnippet(text: string, queryTokens: readonly string[]): string {
+  const normalizedText = text.replace(/\s+/g, " ").trim();
+  if (normalizedText.length <= 110) {
+    return normalizedText;
+  }
+
+  const firstMatchIndex = getEarliestSearchTokenIndex(normalizedText, queryTokens) ?? 0;
+  const start = Math.max(0, firstMatchIndex - 36);
+  const end = Math.min(normalizedText.length, firstMatchIndex + 74);
+  return `${start > 0 ? "... " : ""}${normalizedText.slice(start, end).trim()}${
+    end < normalizedText.length ? " ..." : ""
+  }`;
+}
+
+function findSidebarThreadSearchMatch(
+  thread: SidebarThreadSearchInput,
+  queryTokens: readonly string[],
+): SidebarThreadSearchMatch | null {
+  if (queryTokens.length === 0) {
+    return { source: "title", text: thread.title };
+  }
+
+  const fields: SidebarThreadSearchMatch[] = [
+    { source: "title", text: thread.title },
+    ...(thread.branch ? [{ source: "branch" as const, text: thread.branch }] : []),
+    ...(thread.worktreePath
+      ? [{ source: "worktreePath" as const, text: thread.worktreePath }]
+      : []),
+    ...(thread.messages?.map(
+      (message): SidebarThreadSearchMatch => ({
+        source: "message",
+        text: message.text,
+        role: message.role,
+      }),
+    ) ?? []),
+  ];
+
+  const exactFieldMatch = fields.find((field) =>
+    textIncludesAllSearchTokens(field.text, queryTokens),
+  );
+  if (exactFieldMatch) {
+    return {
+      ...exactFieldMatch,
+      text:
+        exactFieldMatch.source === "message"
+          ? toSidebarThreadSearchSnippet(exactFieldMatch.text, queryTokens)
+          : exactFieldMatch.text,
+    };
+  }
+
+  const partialFieldMatch = fields.find((field) =>
+    textIncludesAnySearchToken(field.text, queryTokens),
+  );
+  return partialFieldMatch
+    ? {
+        ...partialFieldMatch,
+        text:
+          partialFieldMatch.source === "message"
+            ? toSidebarThreadSearchSnippet(partialFieldMatch.text, queryTokens)
+            : partialFieldMatch.text,
+      }
+    : null;
+}
+
+export function getSidebarThreadSearchMatches<T extends SidebarThreadSearchInput>(
+  threads: readonly T[],
+  queryTokens: readonly string[],
+): Map<T["id"], SidebarThreadSearchMatch> {
+  const matches = new Map<T["id"], SidebarThreadSearchMatch>();
+  for (const thread of threads) {
+    const haystack = [
+      thread.title,
+      thread.branch ?? "",
+      thread.worktreePath ?? "",
+      ...(thread.messages?.map((message) => message.text) ?? []),
+    ].join("\n");
+
+    if (!textIncludesAllSearchTokens(haystack, queryTokens)) {
+      continue;
+    }
+
+    const match = findSidebarThreadSearchMatch(thread, queryTokens);
+    if (match) {
+      matches.set(thread.id, match);
+    }
+  }
+  return matches;
+}
+
+export function getSidebarThreadSearchMatchIds<T extends SidebarThreadSearchInput>(
+  threads: readonly T[],
+  queryTokens: readonly string[],
+): Set<T["id"]> {
+  return new Set(getSidebarThreadSearchMatches(threads, queryTokens).keys());
 }
 
 export function resolveAdjacentThreadId<T>(input: {

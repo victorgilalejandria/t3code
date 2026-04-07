@@ -111,6 +111,8 @@ import { isNonEmpty as isNonEmptyString } from "effect/String";
 import {
   getVisibleSidebarThreadIds,
   getVisibleThreadsForProject,
+  getSidebarThreadSearchMatches,
+  normalizeSidebarThreadSearchQuery,
   resolveAdjacentThreadId,
   isContextMenuPointerDown,
   resolveProjectStatusIndicator,
@@ -123,13 +125,16 @@ import {
   sortProjectsForSidebar,
   sortThreadsForSidebar,
   useThreadJumpHintVisibility,
+  type SidebarThreadSearchMatch,
 } from "./Sidebar.logic";
 import { SidebarUpdatePill } from "./sidebar/SidebarUpdatePill";
 import { useCopyToClipboard } from "~/hooks/useCopyToClipboard";
 import { useSettings, useUpdateSettings } from "~/hooks/useSettings";
 import { useServerKeybindings } from "../rpc/serverState";
 import { useSidebarThreadSummaryById } from "../storeSelectors";
-import type { Project } from "../types";
+import type { Project, SidebarThreadSummary } from "../types";
+import { HighlightedSearchText } from "./SearchHighlight";
+import { SearchControl } from "./SearchControl";
 const THREAD_PREVIEW_LIMIT = 6;
 const SIDEBAR_SORT_LABELS: Record<SidebarProjectSortOrder, string> = {
   updated_at: "Last user message",
@@ -261,6 +266,8 @@ interface SidebarThreadRowProps {
   orderedProjectThreadIds: readonly ThreadId[];
   routeThreadId: ThreadId | null;
   selectedThreadIds: ReadonlySet<ThreadId>;
+  searchTokens: readonly string[];
+  searchMatch: SidebarThreadSearchMatch | null;
   showThreadJumpHints: boolean;
   jumpLabel: string | null;
   appSettingsConfirmThreadArchive: boolean;
@@ -289,6 +296,13 @@ interface SidebarThreadRowProps {
   cancelRename: () => void;
   attemptArchiveThread: (threadId: ThreadId) => Promise<void>;
   openPrLink: (event: MouseEvent<HTMLElement>, prUrl: string) => void;
+}
+
+function getSearchMatchLabel(match: SidebarThreadSearchMatch): string | null {
+  if (match.source === "title") return null;
+  if (match.source === "branch") return "branch:";
+  if (match.source === "worktreePath") return "path:";
+  return match.role ? `${match.role}:` : "message:";
 }
 
 function SidebarThreadRow(props: SidebarThreadRowProps) {
@@ -320,6 +334,8 @@ function SidebarThreadRow(props: SidebarThreadRowProps) {
   const prStatus = prStatusIndicator(pr);
   const terminalStatus = terminalStatusFromRunningIds(runningTerminalIds);
   const isConfirmingArchive = props.confirmingArchiveThreadId === thread.id && !isThreadRunning;
+  const searchMatchLabel = props.searchMatch ? getSearchMatchLabel(props.searchMatch) : null;
+  const shouldShowSearchMatch = props.searchTokens.length > 0 && searchMatchLabel !== null;
   const threadMetaClassName = isConfirmingArchive
     ? "pointer-events-none opacity-0"
     : !isThreadRunning
@@ -351,7 +367,7 @@ function SidebarThreadRow(props: SidebarThreadRowProps) {
         className={`${resolveThreadRowClassName({
           isActive,
           isSelected,
-        })} relative isolate`}
+        })} relative isolate ${shouldShowSearchMatch ? "h-auto min-h-10 items-start py-1.5" : ""}`}
         onClick={(event) => {
           props.handleThreadClick(event, thread.id, props.orderedProjectThreadIds);
         }}
@@ -378,7 +394,11 @@ function SidebarThreadRow(props: SidebarThreadRowProps) {
           }
         }}
       >
-        <div className="flex min-w-0 flex-1 items-center gap-1.5 text-left">
+        <div
+          className={`flex min-w-0 flex-1 ${
+            shouldShowSearchMatch ? "items-start" : "items-center"
+          } gap-1.5 text-left`}
+        >
           {prStatus && (
             <Tooltip>
               <TooltipTrigger
@@ -425,7 +445,22 @@ function SidebarThreadRow(props: SidebarThreadRowProps) {
               onClick={(event) => event.stopPropagation()}
             />
           ) : (
-            <span className="min-w-0 flex-1 truncate text-xs">{thread.title}</span>
+            <span className="min-w-0 flex-1">
+              <span className="block truncate text-xs">
+                <HighlightedSearchText text={thread.title} queryTokens={props.searchTokens} />
+              </span>
+              {shouldShowSearchMatch && props.searchMatch ? (
+                <span className="mt-0.5 block truncate text-[10px] leading-3 text-muted-foreground/65">
+                  <span className="mr-1 font-medium text-muted-foreground/75">
+                    {searchMatchLabel}
+                  </span>
+                  <HighlightedSearchText
+                    text={props.searchMatch.text}
+                    queryTokens={props.searchTokens}
+                  />
+                </span>
+              ) : null}
+            </span>
           )}
         </div>
         <div className="ml-auto flex shrink-0 items-center gap-1.5">
@@ -675,6 +710,7 @@ function SortableProjectItem({
 
 export default function Sidebar() {
   const projects = useStore((store) => store.projects);
+  const threads = useStore((store) => store.threads);
   const sidebarThreadsById = useStore((store) => store.sidebarThreadsById);
   const threadIdsByProjectId = useStore((store) => store.threadIdsByProjectId);
   const { projectExpandedById, projectOrder, threadLastVisitedAtById } = useUiStateStore(
@@ -718,6 +754,7 @@ export default function Sidebar() {
   const [renamingThreadId, setRenamingThreadId] = useState<ThreadId | null>(null);
   const [renamingTitle, setRenamingTitle] = useState("");
   const [confirmingArchiveThreadId, setConfirmingArchiveThreadId] = useState<ThreadId | null>(null);
+  const [threadSearchQuery, setThreadSearchQuery] = useState("");
   const [expandedThreadListsByProject, setExpandedThreadListsByProject] = useState<
     ReadonlySet<ProjectId>
   >(() => new Set());
@@ -1427,16 +1464,59 @@ export default function Sidebar() {
     () => sidebarThreads.filter((thread) => thread.archivedAt === null),
     [sidebarThreads],
   );
+  const threadSearchQueryTokens = useMemo(
+    () => normalizeSidebarThreadSearchQuery(threadSearchQuery),
+    [threadSearchQuery],
+  );
+  const isThreadSearchActive = threadSearchQueryTokens.length > 0;
+  const threadSearchMatches = useMemo(
+    () =>
+      isThreadSearchActive
+        ? getSidebarThreadSearchMatches(
+            threads.filter((thread) => thread.archivedAt === null),
+            threadSearchQueryTokens,
+          )
+        : null,
+    [isThreadSearchActive, threadSearchQueryTokens, threads],
+  );
+  const threadSearchMatchedIds = useMemo(
+    () => (threadSearchMatches ? new Set(threadSearchMatches.keys()) : null),
+    [threadSearchMatches],
+  );
+  const filteredVisibleThreads = useMemo(
+    () =>
+      threadSearchMatchedIds
+        ? visibleThreads.filter((thread) => threadSearchMatchedIds.has(thread.id))
+        : visibleThreads,
+    [threadSearchMatchedIds, visibleThreads],
+  );
+  const visibleProjectIds = useMemo(
+    () => new Set(filteredVisibleThreads.map((thread) => thread.projectId)),
+    [filteredVisibleThreads],
+  );
   const sortedProjects = useMemo(
     () =>
-      sortProjectsForSidebar(sidebarProjects, visibleThreads, appSettings.sidebarProjectSortOrder),
-    [appSettings.sidebarProjectSortOrder, sidebarProjects, visibleThreads],
+      sortProjectsForSidebar(
+        isThreadSearchActive
+          ? sidebarProjects.filter((project) => visibleProjectIds.has(project.id))
+          : sidebarProjects,
+        filteredVisibleThreads,
+        appSettings.sidebarProjectSortOrder,
+      ),
+    [
+      appSettings.sidebarProjectSortOrder,
+      filteredVisibleThreads,
+      isThreadSearchActive,
+      sidebarProjects,
+      visibleProjectIds,
+    ],
   );
   const isManualProjectSorting = appSettings.sidebarProjectSortOrder === "manual";
+  const shouldEnableProjectDrag = isManualProjectSorting && !isThreadSearchActive;
   const renderedProjects = useMemo(
     () =>
       sortedProjects.map((project) => {
-        const resolveProjectThreadStatus = (thread: (typeof visibleThreads)[number]) =>
+        const resolveProjectThreadStatus = (thread: SidebarThreadSummary) =>
           resolveThreadStatusPill({
             thread: {
               ...thread,
@@ -1447,19 +1527,25 @@ export default function Sidebar() {
           (threadIdsByProjectId[project.id] ?? [])
             .map((threadId) => sidebarThreadsById[threadId])
             .filter((thread): thread is NonNullable<typeof thread> => thread !== undefined)
-            .filter((thread) => thread.archivedAt === null),
+            .filter(
+              (thread) =>
+                thread.archivedAt === null &&
+                (threadSearchMatchedIds === null || threadSearchMatchedIds.has(thread.id)),
+            ),
           appSettings.sidebarThreadSortOrder,
         );
         const projectStatus = resolveProjectStatusIndicator(
           projectThreads.map((thread) => resolveProjectThreadStatus(thread)),
         );
         const activeThreadId = routeThreadId ?? undefined;
-        const isThreadListExpanded = expandedThreadListsByProject.has(project.id);
+        const isThreadListExpanded =
+          isThreadSearchActive || expandedThreadListsByProject.has(project.id);
         const pinnedCollapsedThread =
           !project.expanded && activeThreadId
             ? (projectThreads.find((thread) => thread.id === activeThreadId) ?? null)
             : null;
-        const shouldShowThreadPanel = project.expanded || pinnedCollapsedThread !== null;
+        const shouldShowThreadPanel =
+          isThreadSearchActive || project.expanded || pinnedCollapsedThread !== null;
         const {
           hasHiddenThreads,
           hiddenThreads,
@@ -1477,7 +1563,8 @@ export default function Sidebar() {
         const renderedThreadIds = pinnedCollapsedThread
           ? [pinnedCollapsedThread.id]
           : visibleProjectThreads.map((thread) => thread.id);
-        const showEmptyThreadState = project.expanded && projectThreads.length === 0;
+        const showEmptyThreadState =
+          !isThreadSearchActive && project.expanded && projectThreads.length === 0;
 
         return {
           hasHiddenThreads,
@@ -1494,9 +1581,11 @@ export default function Sidebar() {
     [
       appSettings.sidebarThreadSortOrder,
       expandedThreadListsByProject,
+      isThreadSearchActive,
       routeThreadId,
       sortedProjects,
       sidebarThreadsById,
+      threadSearchMatchedIds,
       threadIdsByProjectId,
       threadLastVisitedAtById,
     ],
@@ -1639,13 +1728,13 @@ export default function Sidebar() {
       <>
         <div className="group/project-header relative">
           <SidebarMenuButton
-            ref={isManualProjectSorting ? dragHandleProps?.setActivatorNodeRef : undefined}
+            ref={shouldEnableProjectDrag ? dragHandleProps?.setActivatorNodeRef : undefined}
             size="sm"
             className={`gap-2 px-2 py-1.5 text-left hover:bg-accent group-hover/project-header:bg-accent group-hover/project-header:text-sidebar-accent-foreground ${
-              isManualProjectSorting ? "cursor-grab active:cursor-grabbing" : "cursor-pointer"
+              shouldEnableProjectDrag ? "cursor-grab active:cursor-grabbing" : "cursor-pointer"
             }`}
-            {...(isManualProjectSorting && dragHandleProps ? dragHandleProps.attributes : {})}
-            {...(isManualProjectSorting && dragHandleProps ? dragHandleProps.listeners : {})}
+            {...(shouldEnableProjectDrag && dragHandleProps ? dragHandleProps.attributes : {})}
+            {...(shouldEnableProjectDrag && dragHandleProps ? dragHandleProps.listeners : {})}
             onPointerDownCapture={handleProjectTitlePointerDownCapture}
             onClick={(event) => handleProjectTitleClick(event, project.id)}
             onKeyDown={(event) => handleProjectTitleKeyDown(event, project.id)}
@@ -1800,6 +1889,8 @@ export default function Sidebar() {
                 orderedProjectThreadIds={orderedProjectThreadIds}
                 routeThreadId={routeThreadId}
                 selectedThreadIds={selectedThreadIds}
+                searchTokens={threadSearchQueryTokens}
+                searchMatch={threadSearchMatches?.get(threadId) ?? null}
                 showThreadJumpHints={showThreadJumpHints}
                 jumpLabel={threadJumpLabelById.get(threadId) ?? null}
                 appSettingsConfirmThreadArchive={appSettings.confirmThreadArchive}
@@ -2205,8 +2296,19 @@ export default function Sidebar() {
                   )}
                 </div>
               )}
+              <div className="mb-2 px-1" data-thread-selection-safe>
+                <SearchControl
+                  id="sidebar-thread-search"
+                  value={threadSearchQuery}
+                  placeholder="Search threads..."
+                  ariaLabel="Search threads"
+                  clearAriaLabel="Clear thread search"
+                  matchCount={isThreadSearchActive ? filteredVisibleThreads.length : undefined}
+                  onValueChange={setThreadSearchQuery}
+                />
+              </div>
 
-              {isManualProjectSorting ? (
+              {shouldEnableProjectDrag ? (
                 <DndContext
                   sensors={projectDnDSensors}
                   collisionDetection={projectCollisionDetection}
@@ -2241,7 +2343,13 @@ export default function Sidebar() {
                 </SidebarMenu>
               )}
 
-              {projects.length === 0 && !shouldShowProjectPathEntry && (
+              {isThreadSearchActive && filteredVisibleThreads.length === 0 && (
+                <div className="px-2 pt-4 text-center text-xs text-muted-foreground/60">
+                  No matching threads
+                </div>
+              )}
+
+              {projects.length === 0 && !shouldShowProjectPathEntry && !isThreadSearchActive && (
                 <div className="px-2 pt-4 text-center text-xs text-muted-foreground/60">
                   No projects yet
                 </div>
