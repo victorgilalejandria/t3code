@@ -1,14 +1,14 @@
-import { findSearchTokenRanges } from "../lib/searchText";
+import { findSearchTermRanges } from "../lib/searchText";
 
 export function getHighlightedSearchSegments(
   text: string,
-  queryTokens: readonly string[],
+  queryTerms: readonly string[],
 ): { key: string; text: string; highlighted: boolean }[] {
-  if (text.length === 0 || queryTokens.length === 0) {
+  if (text.length === 0 || queryTerms.length === 0) {
     return [{ key: "plain-0", text, highlighted: false }];
   }
 
-  const ranges = findSearchTokenRanges(text, queryTokens);
+  const ranges = findSearchTermRanges(text, queryTerms);
 
   if (ranges.length === 0) {
     return [{ key: "plain-0", text, highlighted: false }];
@@ -55,14 +55,14 @@ export function getHighlightedSearchSegments(
 
 export function HighlightedSearchText({
   text,
-  queryTokens,
+  queryTerms,
 }: {
   text: string;
-  queryTokens: readonly string[];
+  queryTerms: readonly string[];
 }) {
   return (
     <>
-      {getHighlightedSearchSegments(text, queryTokens).map((segment) =>
+      {getHighlightedSearchSegments(text, queryTerms).map((segment) =>
         segment.highlighted ? (
           <mark
             key={segment.key}

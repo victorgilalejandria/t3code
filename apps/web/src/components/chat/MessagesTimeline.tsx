@@ -57,7 +57,7 @@ import { cn } from "~/lib/utils";
 import { type TimestampFormat } from "@t3tools/contracts/settings";
 import { formatTimestamp } from "../../timestampFormat";
 import { HighlightedSearchText } from "../SearchHighlight";
-import { getEarliestSearchTokenIndex } from "../../lib/searchText";
+import { getEarliestSearchTermIndex } from "../../lib/searchText";
 import {
   buildInlineTerminalContextText,
   formatInlineTerminalContextLabel,
@@ -88,7 +88,7 @@ interface MessagesTimelineProps {
   resolvedTheme: "light" | "dark";
   timestampFormat: TimestampFormat;
   workspaceRoot: string | undefined;
-  threadSearchTokens: readonly string[];
+  threadSearchTerms: readonly string[];
   threadSearchMatchingMessageIds: ReadonlySet<MessageId>;
   onVirtualizerSnapshot?: (snapshot: {
     totalSize: number;
@@ -125,7 +125,7 @@ export const MessagesTimeline = memo(function MessagesTimeline({
   resolvedTheme,
   timestampFormat,
   workspaceRoot,
-  threadSearchTokens,
+  threadSearchTerms,
   threadSearchMatchingMessageIds,
   onVirtualizerSnapshot,
 }: MessagesTimelineProps) {
@@ -422,7 +422,7 @@ export const MessagesTimeline = memo(function MessagesTimeline({
                     <UserMessageBody
                       text={displayedUserMessage.visibleText}
                       terminalContexts={terminalContexts}
-                      searchTokens={isThreadSearchMessageMatch ? threadSearchTokens : []}
+                      searchTerms={isThreadSearchMessageMatch ? threadSearchTerms : []}
                     />
                   )}
                   <div className="mt-1.5 flex items-center justify-end gap-2">
@@ -479,8 +479,8 @@ export const MessagesTimeline = memo(function MessagesTimeline({
                     <div className="mb-2 rounded-lg border border-yellow-400/25 bg-yellow-400/10 px-2 py-1 text-xs leading-relaxed text-foreground/85">
                       <span className="mr-1 font-medium text-muted-foreground">match:</span>
                       <HighlightedSearchText
-                        text={toThreadSearchPreview(messageText, threadSearchTokens)}
-                        queryTokens={threadSearchTokens}
+                        text={toThreadSearchPreview(messageText, threadSearchTerms)}
+                        queryTerms={threadSearchTerms}
                       />
                     </div>
                   )}
@@ -643,13 +643,13 @@ type TimelineMessage = Extract<TimelineEntry, { kind: "message" }>["message"];
 type TimelineWorkEntry = Extract<MessagesTimelineRow, { kind: "work" }>["groupedEntries"][number];
 type TimelineRow = MessagesTimelineRow;
 
-function toThreadSearchPreview(text: string, queryTokens: readonly string[]): string {
+function toThreadSearchPreview(text: string, queryTerms: readonly string[]): string {
   const normalizedText = text.replace(/\s+/g, " ").trim();
   if (normalizedText.length <= 180) {
     return normalizedText;
   }
 
-  const firstMatchIndex = getEarliestSearchTokenIndex(normalizedText, queryTokens) ?? 0;
+  const firstMatchIndex = getEarliestSearchTermIndex(normalizedText, queryTerms) ?? 0;
   const start = Math.max(0, firstMatchIndex - 60);
   const end = Math.min(normalizedText.length, firstMatchIndex + 120);
   return `${start > 0 ? "... " : ""}${normalizedText.slice(start, end).trim()}${
@@ -703,7 +703,7 @@ const UserMessageTerminalContextInlineLabel = memo(
 const UserMessageBody = memo(function UserMessageBody(props: {
   text: string;
   terminalContexts: ParsedTerminalContextEntry[];
-  searchTokens: readonly string[];
+  searchTerms: readonly string[];
 }) {
   if (props.terminalContexts.length > 0) {
     const hasEmbeddedInlineLabels = textContainsInlineTerminalContextLabels(
@@ -728,7 +728,7 @@ const UserMessageBody = memo(function UserMessageBody(props: {
             <span key={`user-terminal-context-inline-before:${context.header}:${cursor}`}>
               <HighlightedSearchText
                 text={props.text.slice(cursor, matchIndex)}
-                queryTokens={props.searchTokens}
+                queryTerms={props.searchTerms}
               />
             </span>,
           );
@@ -748,7 +748,7 @@ const UserMessageBody = memo(function UserMessageBody(props: {
             <span key={`user-message-terminal-context-inline-rest:${cursor}`}>
               <HighlightedSearchText
                 text={props.text.slice(cursor)}
-                queryTokens={props.searchTokens}
+                queryTerms={props.searchTerms}
               />
             </span>,
           );
@@ -779,7 +779,7 @@ const UserMessageBody = memo(function UserMessageBody(props: {
     if (props.text.length > 0) {
       inlineNodes.push(
         <span key="user-message-terminal-context-inline-text">
-          <HighlightedSearchText text={props.text} queryTokens={props.searchTokens} />
+          <HighlightedSearchText text={props.text} queryTerms={props.searchTerms} />
         </span>,
       );
     } else if (inlinePrefix.length === 0) {
@@ -799,7 +799,7 @@ const UserMessageBody = memo(function UserMessageBody(props: {
 
   return (
     <pre className="whitespace-pre-wrap wrap-break-word font-mono text-sm leading-relaxed text-foreground">
-      <HighlightedSearchText text={props.text} queryTokens={props.searchTokens} />
+      <HighlightedSearchText text={props.text} queryTerms={props.searchTerms} />
     </pre>
   );
 });

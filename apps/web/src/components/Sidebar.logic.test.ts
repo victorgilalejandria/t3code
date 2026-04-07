@@ -366,11 +366,11 @@ describe("getVisibleSidebarThreadIds", () => {
 });
 
 describe("sidebar thread search", () => {
-  it("normalizes whitespace and case into query tokens", () => {
-    expect(normalizeSidebarThreadSearchQuery("  Fix   API Bug  ")).toEqual(["fix", "api", "bug"]);
+  it("trims whitespace and lowercases into a query phrase", () => {
+    expect(normalizeSidebarThreadSearchQuery("  Fix   API Bug  ")).toEqual(["fix   api bug"]);
   });
 
-  it("matches thread titles, metadata, and message text", () => {
+  it("matches thread titles, metadata, and message text by phrase", () => {
     const threads = [
       makeThread({
         id: ThreadId.makeUnsafe("thread-1"),
@@ -404,14 +404,14 @@ describe("sidebar thread search", () => {
     ];
 
     expect([
-      ...getSidebarThreadSearchMatchIds(threads, normalizeSidebarThreadSearchQuery("thread fast")),
+      ...getSidebarThreadSearchMatchIds(threads, normalizeSidebarThreadSearchQuery("fast thread")),
     ]).toEqual([ThreadId.makeUnsafe("thread-1")]);
     expect([
       ...getSidebarThreadSearchMatchIds(threads, normalizeSidebarThreadSearchQuery("bug")),
     ]).toEqual([ThreadId.makeUnsafe("thread-2")]);
   });
 
-  it("requires every query word to be present in the same thread", () => {
+  it("requires the full query phrase to be present", () => {
     const threads = [
       makeThread({
         id: ThreadId.makeUnsafe("thread-library-only"),
@@ -457,7 +457,7 @@ describe("sidebar thread search", () => {
         threads,
         normalizeSidebarThreadSearchQuery("Library handoff"),
       ),
-    ]).toEqual([ThreadId.makeUnsafe("thread-library-handoff")]);
+    ]).toEqual([]);
   });
 
   it("returns a display match for the field that explains the result", () => {

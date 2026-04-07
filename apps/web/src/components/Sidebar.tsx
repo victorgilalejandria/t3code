@@ -266,7 +266,7 @@ interface SidebarThreadRowProps {
   orderedProjectThreadIds: readonly ThreadId[];
   routeThreadId: ThreadId | null;
   selectedThreadIds: ReadonlySet<ThreadId>;
-  searchTokens: readonly string[];
+  searchTerms: readonly string[];
   searchMatch: SidebarThreadSearchMatch | null;
   showThreadJumpHints: boolean;
   jumpLabel: string | null;
@@ -335,7 +335,7 @@ function SidebarThreadRow(props: SidebarThreadRowProps) {
   const terminalStatus = terminalStatusFromRunningIds(runningTerminalIds);
   const isConfirmingArchive = props.confirmingArchiveThreadId === thread.id && !isThreadRunning;
   const searchMatchLabel = props.searchMatch ? getSearchMatchLabel(props.searchMatch) : null;
-  const shouldShowSearchMatch = props.searchTokens.length > 0 && searchMatchLabel !== null;
+  const shouldShowSearchMatch = props.searchTerms.length > 0 && searchMatchLabel !== null;
   const threadMetaClassName = isConfirmingArchive
     ? "pointer-events-none opacity-0"
     : !isThreadRunning
@@ -447,7 +447,7 @@ function SidebarThreadRow(props: SidebarThreadRowProps) {
           ) : (
             <span className="min-w-0 flex-1">
               <span className="block truncate text-xs">
-                <HighlightedSearchText text={thread.title} queryTokens={props.searchTokens} />
+                <HighlightedSearchText text={thread.title} queryTerms={props.searchTerms} />
               </span>
               {shouldShowSearchMatch && props.searchMatch ? (
                 <span className="mt-0.5 block truncate text-[10px] leading-3 text-muted-foreground/65">
@@ -456,7 +456,7 @@ function SidebarThreadRow(props: SidebarThreadRowProps) {
                   </span>
                   <HighlightedSearchText
                     text={props.searchMatch.text}
-                    queryTokens={props.searchTokens}
+                    queryTerms={props.searchTerms}
                   />
                 </span>
               ) : null}
@@ -1464,20 +1464,20 @@ export default function Sidebar() {
     () => sidebarThreads.filter((thread) => thread.archivedAt === null),
     [sidebarThreads],
   );
-  const threadSearchQueryTokens = useMemo(
+  const threadSearchQueryTerms = useMemo(
     () => normalizeSidebarThreadSearchQuery(threadSearchQuery),
     [threadSearchQuery],
   );
-  const isThreadSearchActive = threadSearchQueryTokens.length > 0;
+  const isThreadSearchActive = threadSearchQueryTerms.length > 0;
   const threadSearchMatches = useMemo(
     () =>
       isThreadSearchActive
         ? getSidebarThreadSearchMatches(
             threads.filter((thread) => thread.archivedAt === null),
-            threadSearchQueryTokens,
+            threadSearchQueryTerms,
           )
         : null,
-    [isThreadSearchActive, threadSearchQueryTokens, threads],
+    [isThreadSearchActive, threadSearchQueryTerms, threads],
   );
   const threadSearchMatchedIds = useMemo(
     () => (threadSearchMatches ? new Set(threadSearchMatches.keys()) : null),
@@ -1889,7 +1889,7 @@ export default function Sidebar() {
                 orderedProjectThreadIds={orderedProjectThreadIds}
                 routeThreadId={routeThreadId}
                 selectedThreadIds={selectedThreadIds}
-                searchTokens={threadSearchQueryTokens}
+                searchTerms={threadSearchQueryTerms}
                 searchMatch={threadSearchMatches?.get(threadId) ?? null}
                 showThreadJumpHints={showThreadJumpHints}
                 jumpLabel={threadJumpLabelById.get(threadId) ?? null}

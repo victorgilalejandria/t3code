@@ -169,7 +169,7 @@ function createBaseTimelineProps(input: {
     resolvedTheme: "light",
     timestampFormat: "locale",
     workspaceRoot: MARKDOWN_CWD,
-    threadSearchTokens: [],
+    threadSearchTerms: [],
     threadSearchMatchingMessageIds: new Set(),
     ...(input.onVirtualizerSnapshot ? { onVirtualizerSnapshot: input.onVirtualizerSnapshot } : {}),
   };

@@ -154,8 +154,7 @@ import { ComposerPromptEditor, type ComposerPromptEditorHandle } from "./Compose
 import { PullRequestThreadDialog } from "./PullRequestThreadDialog";
 import { MessagesTimeline } from "./chat/MessagesTimeline";
 import { ChatHeader } from "./chat/ChatHeader";
-import { normalizeSidebarThreadSearchQuery } from "./Sidebar.logic";
-import { textIncludesAllSearchTokens } from "../lib/searchText";
+import { normalizeSearchPhraseQuery, textIncludesAllSearchTerms } from "../lib/searchText";
 import { ContextWindowMeter } from "./chat/ContextWindowMeter";
 import { buildExpandedImagePreview, ExpandedImagePreview } from "./chat/ExpandedImagePreview";
 import { AVAILABLE_PROVIDER_OPTIONS, ProviderModelPicker } from "./chat/ProviderModelPicker";
@@ -1321,22 +1320,22 @@ export default function ChatView({ threadId }: ChatViewProps) {
     }
     return [...serverMessagesWithPreviewHandoff, ...pendingMessages];
   }, [serverMessages, attachmentPreviewHandoffByMessageId, optimisticUserMessages]);
-  const threadSearchTokens = useMemo(
-    () => normalizeSidebarThreadSearchQuery(threadSearchQuery),
+  const threadSearchTerms = useMemo(
+    () => normalizeSearchPhraseQuery(threadSearchQuery),
     [threadSearchQuery],
   );
   const threadSearchMatchingMessageIds = useMemo(() => {
     const matchingIds = new Set<MessageId>();
     for (const message of timelineMessages) {
       if (
-        threadSearchTokens.length > 0 &&
-        textIncludesAllSearchTokens(message.text, threadSearchTokens)
+        threadSearchTerms.length > 0 &&
+        textIncludesAllSearchTerms(message.text, threadSearchTerms)
       ) {
         matchingIds.add(message.id);
       }
     }
     return matchingIds;
-  }, [threadSearchTokens, timelineMessages]);
+  }, [threadSearchTerms, timelineMessages]);
   const timelineEntries = useMemo(
     () =>
       deriveTimelineEntries(timelineMessages, activeThread?.proposedPlans ?? [], workLogEntries),
@@ -4034,7 +4033,7 @@ export default function ChatView({ threadId }: ChatViewProps) {
                 resolvedTheme={resolvedTheme}
                 timestampFormat={timestampFormat}
                 workspaceRoot={activeWorkspaceRoot}
-                threadSearchTokens={threadSearchTokens}
+                threadSearchTerms={threadSearchTerms}
                 threadSearchMatchingMessageIds={threadSearchMatchingMessageIds}
               />
             </div>
