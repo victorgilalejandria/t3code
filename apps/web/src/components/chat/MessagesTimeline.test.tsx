@@ -92,6 +92,8 @@ describe("MessagesTimeline", () => {
         resolvedTheme="light"
         timestampFormat="locale"
         workspaceRoot={undefined}
+        threadSearchTerms={[]}
+        threadSearchMatchingMessageIds={new Set()}
       />,
     );
 
@@ -138,6 +140,8 @@ describe("MessagesTimeline", () => {
         resolvedTheme="light"
         timestampFormat="locale"
         workspaceRoot={undefined}
+        threadSearchTerms={[]}
+        threadSearchMatchingMessageIds={new Set()}
       />,
     );
 
